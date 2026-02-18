@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -47,7 +47,7 @@ COPY packages/ml/ecotrack_ml packages/ml/ecotrack_ml/
 COPY apps/api-python/ecotrack_api apps/api-python/ecotrack_api/
 
 # Create a clean runtime image
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
