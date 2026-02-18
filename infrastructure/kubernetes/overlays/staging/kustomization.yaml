@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+namespace: ecotrack
+
+commonLabels:
+  environment: staging
+
+patches:
+  - path: patches/api-python-deployment.yaml
+  - path: patches/api-python-hpa.yaml
+  - path: patches/web-deployment.yaml
+  - path: patches/worker-deployment.yaml
+  - path: patches/ingress.yaml
+
+configMapGenerator:
+  - name: api-python-config
+    behavior: merge
+    literals:
+      - log_level=INFO
+      - db_host=postgres-staging.ecotrack.svc.cluster.local
+      - redis_host=redis-staging.ecotrack.svc.cluster.local
+      - s3_endpoint=http://minio-staging.ecotrack.svc.cluster.local:9000
+      - mlflow_tracking_uri=http://mlflow-staging.ecotrack.svc.cluster.local:5000

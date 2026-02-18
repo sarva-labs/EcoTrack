@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-python-config
+  namespace: ecotrack
+  labels:
+    app.kubernetes.io/name: api-python
+    app.kubernetes.io/component: api
+data:
+  log_level: "INFO"
+  db_host: "postgres"
+  db_port: "5432"
+  db_name: "ecotrack"
+  redis_host: "redis"
+  redis_port: "6379"
+  s3_endpoint: "http://minio:9000"
+  s3_bucket: "ecotrack-bucket"
+  mlflow_tracking_uri: "http://mlflow:5000"
+  api_workers: "4"
+  api_timeout: "60"
+  api_cors_origins: "*"
+  api_rate_limit_enabled: "true"
+  api_rate_limit_default: "100,5m"
+  api_rate_limit_authenticated: "1000,5m"

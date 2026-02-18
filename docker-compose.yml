@@ -1,0 +1,263 @@
+version: '3.9'
+
+services:
+  # ==========================================================================
+  # Infrastructure Services
+  # ==========================================================================
+
+  # PostgreSQL 16 with PostGIS and TimescaleDB
+  postgres:
+    image: timescale/timescaledb-ha:pg16-ts2.14
+    container_name: ecotrack-postgres
+    environment:
+      POSTGRES_DB: ecotrack
+      POSTGRES_USER: ecotrack
+      POSTGRES_PASSWORD: ecotrack
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/home/postgres/pgdata/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - ecotrack-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecotrack -d ecotrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 7
+  redis:
+    image: redis:7-alpine
+    container_name: ecotrack-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ecotrack-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO (S3-compatible object storage)
+  minio:
+    image: minio/minio:latest
+    container_name: ecotrack-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - ecotrack-network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Neo4j 5 (Knowledge Graph)
+  neo4j:
+    image: neo4j:5-community
+    container_name: ecotrack-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/ecotrack_kg
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - ecotrack-network
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MLflow Tracking Server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.0
+    container_name: ecotrack-mlflow
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://ecotrack:ecotrack@postgres:5432/ecotrack
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://ecotrack-mlflow/
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ecotrack-network
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri postgresql://ecotrack:ecotrack@postgres:5432/ecotrack
+        --default-artifact-root s3://ecotrack-mlflow/
+
+  # ==========================================================================
+  # Application Services
+  # ==========================================================================
+
+  # Next.js Frontend
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: ecotrack-web
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - NEXT_PUBLIC_API_URL=http://api:3001
+      - NEXT_PUBLIC_PYTHON_API_URL=http://api-python:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - /app/apps/web/node_modules
+      - /app/node_modules
+    depends_on:
+      - api
+      - api-python
+    networks:
+      - ecotrack-network
+    command: npm run dev
+
+  # NestJS Backend API
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    container_name: ecotrack-api
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FRONTEND_URL=http://localhost:3000
+      - PYTHON_API_URL=http://api-python:8000
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/api:/app/apps/api
+      - /app/apps/api/node_modules
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ecotrack-network
+    command: npm run dev
+
+  # FastAPI Python API (replaces ml-api)
+  api-python:
+    build:
+      context: .
+      dockerfile: ./apps/api-python/Dockerfile
+    container_name: ecotrack-api-python
+    environment:
+      - ECOTRACK_ENV=development
+      - ECOTRACK_DEBUG=true
+      - ECOTRACK_LOG_LEVEL=DEBUG
+      - ECOTRACK_API_HOST=0.0.0.0
+      - ECOTRACK_API_PORT=8000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=ecotrack
+      - DB_USER=ecotrack
+      - DB_PASSWORD=ecotrack
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_BUCKET=ecotrack
+      - ML_MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ML_MODEL_REGISTRY_URI=http://mlflow:5000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./packages:/app/packages
+      - ./apps/api-python:/app/apps/api-python
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ecotrack-network
+    command: >
+      uvicorn ecotrack_api.main:app
+        --host 0.0.0.0
+        --port 8000
+        --reload
+
+  # Celery Worker
+  worker:
+    build:
+      context: .
+      dockerfile: ./apps/api-python/Dockerfile
+    container_name: ecotrack-worker
+    environment:
+      - ECOTRACK_ENV=development
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=ecotrack
+      - DB_USER=ecotrack
+      - DB_PASSWORD=ecotrack
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - ML_MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ./packages:/app/packages
+      - ./apps/worker:/app/apps/worker
+      - ./apps/api-python:/app/apps/api-python
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ecotrack-network
+    command: >
+      celery -A ecotrack_worker.main worker
+        --loglevel=info
+        --queues=data,ml
+        --concurrency=2
+
+networks:
+  ecotrack-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  neo4j_data:

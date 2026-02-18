@@ -1,0 +1,22 @@
+[project]
+name = "ecotrack-knowledge-graph"
+version = "0.1.0"
+description = "Knowledge graph for environmental intelligence"
+requires-python = ">=3.11"
+dependencies = [
+    "ecotrack-core",
+    "neo4j>=5.0",
+    "rdflib>=7.0",
+    "networkx>=3.2",
+    "structlog>=23.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-asyncio>=0.23"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ecotrack_kg"]

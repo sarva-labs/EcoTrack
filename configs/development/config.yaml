@@ -1,0 +1,68 @@
+environment: development
+debug: true
+log_level: DEBUG
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  cors_origins: ["http://localhost:3001"]
+  rate_limit:
+    free: { rpm: 100, rpd: 5000 }
+    researcher: { rpm: 500, rpd: 50000 }
+    institutional: { rpm: 1000, rpd: 100000 }
+
+database:
+  host: localhost
+  port: 5432
+  name: ecotrack
+  user: ecotrack
+  pool_size: 5
+  extensions:
+    - postgis
+    - timescaledb
+    - pgvector
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  ttl_default_seconds: 300
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  schema_registry_url: "http://localhost:8081"
+  consumer_group_prefix: "ecotrack"
+  default_partitions: 12
+  replication_factor: 1
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  database: ecotrack
+  user: neo4j
+  password: ecotrack_dev
+
+storage:
+  endpoint: http://localhost:9000
+  bucket: ecotrack-dev
+  access_key: minioadmin
+  secret_key: minioadmin
+  secure: false
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  artifact_root: "s3://ecotrack-dev/models/mlflow-artifacts"
+
+h3:
+  default_resolution: 7
+  partition_resolution: 3
+  cache_resolution: 5
+
+feature_flags:
+  FF_CLIMATE_GRAPHCAST_ENSEMBLE: "off"
+  FF_CLIMATE_DOWNSCALING_V2: "off"
+  FF_CLIMATE_SCENARIO_EXPLORER: "on"
+  FF_AGENTS_ENABLED: "on"
+  FF_AGENTS_CROSS_DOMAIN: "off"
+  FF_PIPELINE_SENTINEL2_REALTIME: "on"
+  FF_UI_3D_TERRAIN: "off"
