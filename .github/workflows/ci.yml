@@ -84,7 +84,7 @@ jobs:
           DB_PASSWORD: test
         run: pytest tests/ packages/ --cov=packages --cov-report=xml -v
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: coverage.xml
 
